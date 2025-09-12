@@ -1,0 +1,12 @@
+__pycache__/
+
+/.venv/
+
+.env
+/.python-version
+
+.uv/
+
+.vscode/
+
+/db/
