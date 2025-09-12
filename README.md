@@ -9,12 +9,6 @@ git clone https://github.com/co0okie/piano-club-assistant.git
 cd piano-club-assistant
 ```
 
-複製 Python 環境
-
-```bash
-uv sync
-```
-
 新增 `.env`，內容舉例:
 
 ```
