@@ -1,11 +1,12 @@
 __pycache__/
 
-/.venv/
-
 .env
-/.python-version
 
-.uv/
+/.python-version
+/.venv
+pyproject.toml
+uv.lock
+
 
 .vscode/
 
