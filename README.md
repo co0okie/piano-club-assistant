@@ -2,29 +2,31 @@
 
 ## 開發環境設定
 
-下載 Project
+1. 安裝 [Docker](https://docs.docker.com/engine/install/)
 
-```bash
-git clone https://github.com/co0okie/piano-club-assistant.git
-cd piano-club-assistant
-```
+2. Clone
 
-新增 `.env`，內容舉例:
+    ```bash
+    git clone https://github.com/co0okie/piano-club-assistant.git
+    cd piano-club-assistant
+    ```
 
-```
-POSTGRES_DB=<db_name>
-POSTGRES_USER=<db_user>
-POSTGRES_PASSWORD=<db_password>
-```
+3. 新增 `.env`，內容舉例:
 
-啟動 (測試)
+    ```
+    POSTGRES_DB=<db_name>
+    POSTGRES_USER=<db_user>
+    POSTGRES_PASSWORD=<db_password>
+    ```
 
-```bash
-docker compose -f infra/docker/compose.dev.yml up
-```
+4. 啟動 (測試)
 
-關閉
+    ```bash
+    docker compose -f infra/docker/compose.dev.yml up
+    ```
 
-```bash
-docker compose -f infra/docker/compose.dev.yml down
-```
+5. 關閉
+
+    ```bash
+    docker compose -f infra/docker/compose.dev.yml down -v
+    ```
