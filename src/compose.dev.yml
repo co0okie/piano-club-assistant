@@ -67,6 +67,7 @@ services:
       LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
       LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      NGROK_DOMAIN: ${NGROK_DOMAIN}
     command: "gunicorn -w 3 --threads 8 -b 0.0.0.0:5000 app:app"
     restart: unless-stopped
     networks:
