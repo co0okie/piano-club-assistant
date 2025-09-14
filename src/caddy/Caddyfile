@@ -1,4 +1,8 @@
-localhost {
+{
+    auto_https off
+}
+
+http://:80 {
 	encode zstd gzip
 
 	handle_path /linebot/* {

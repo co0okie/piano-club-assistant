@@ -1,11 +1,20 @@
 services:
+  ngrok:
+    image: ngrok/ngrok:alpine
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    networks:
+      - piano
+    command: http caddy:80 --url=${NGROK_DOMAIN}
+    restart: unless-stopped
+    depends_on:
+      - caddy
   caddy:
     image: caddy:2
     networks:
       - piano
-    ports:
-      - "8080:80"
-      - "4433:443"
+    expose:
+      - "80"
     volumes:
       - ./caddy:/etc/caddy
       - caddy_data:/data
@@ -16,7 +25,10 @@ services:
       - linebot
   db:
     image: postgres:16
-    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     networks:
       - piano
     expose:
@@ -34,7 +46,10 @@ services:
     build: ./api
     volumes:
       - ./api/app:/app
-    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     networks:
       - piano
     expose:
@@ -49,8 +64,10 @@ services:
     volumes:
       - ./linebot/app:/app
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
+      LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     command: "gunicorn -w 3 --threads 8 -b 0.0.0.0:5000 app:app"
     networks:
       - piano

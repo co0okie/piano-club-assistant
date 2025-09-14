@@ -14,9 +14,14 @@
 3. 新增 `.env`，內容舉例:
 
     ```
-    POSTGRES_DB=<db_name>
-    POSTGRES_USER=<db_user>
-    POSTGRES_PASSWORD=<db_password>
+    POSTGRES_DB=piano
+    POSTGRES_USER=piano
+    POSTGRES_PASSWORD=piano
+    ANTHROPIC_API_KEY=
+    LINE_CHANNEL_ACCESS_TOKEN=
+    LINE_CHANNEL_SECRET=
+    NGROK_AUTHTOKEN=
+    NGROK_DOMAIN=
     ```
 
 4. 啟動 (測試)
