@@ -21,7 +21,7 @@ app = Flask(__name__)
 # API 金鑰設定
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET')
-CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 
 # MCP 伺服器設定
 MCP_SERVERS = {
@@ -44,7 +44,7 @@ MCP_SERVERS = {
 # 驗證設定
 logger.info(f"✅ LINE Token 長度: {len(LINE_CHANNEL_ACCESS_TOKEN)}")
 logger.info(f"✅ LINE Secret 長度: {len(LINE_CHANNEL_SECRET)}")  
-logger.info(f"✅ Claude API Key 長度: {len(CLAUDE_API_KEY)}")
+logger.info(f"✅ Claude API Key 長度: {len(ANTHROPIC_API_KEY)}")
 logger.info(f"✅ 配置了 {len(MCP_SERVERS)} 個 MCP 伺服器")
 
 # 初始化 LINE Bot API
@@ -58,7 +58,7 @@ except Exception as e:
 
 # 初始化 Claude API
 try:
-    claude_client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
+    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     logger.info("✅ Claude API 初始化成功")
 except Exception as e:
     logger.error(f"❌ Claude API 初始化失敗: {e}")

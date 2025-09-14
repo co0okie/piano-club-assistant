@@ -1,9 +1,26 @@
 services:
+  caddy:
+    image: caddy:2
+    networks:
+      - piano
+    ports:
+      - "8080:80"
+      - "4433:443"
+    volumes:
+      - ./caddy:/etc/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    depends_on:
+      - api
+      - linebot
   db:
     image: postgres:16
-    env_file: ../../.env
-    ports:
-      - "5432:5432"
+    env_file: .env
+    networks:
+      - piano
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,23 +31,34 @@ services:
       start_period: 5s
     restart: always
   api:
-    build: ../../api
+    build: ./api
     volumes:
-      - ../../api:/app
-    env_file: ../../.env
-    ports:
-      - "8000:80"
+      - ./api/app:/app
+    env_file: .env
+    networks:
+      - piano
+    expose:
+      - "8000"
     restart: always
+    command: "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     depends_on:
       db:
         condition: service_healthy
   linebot:
-    build: linebot
+    build: ./linebot
+    volumes:
+      - ./linebot/app:/app
     restart: unless-stopped
     env_file:
       - .env
     command: "gunicorn -w 3 --threads 8 -b 0.0.0.0:5000 app:app"
-    ports:
-      - "5000:5000"
+    networks:
+      - piano
+    expose:
+      - "5000"
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
+networks:
+  piano:
