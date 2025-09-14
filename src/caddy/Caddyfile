@@ -13,6 +13,10 @@ http://:80 {
 		reverse_proxy api:8000
 	}
 
+    handle /mcp* {
+        reverse_proxy mcp:8000
+    }
+
 	handle {
 		respond "OK" 200
 	}
