@@ -1,3 +1,4 @@
+name: piano-club-assistant
 services:
   ngrok:
     image: ngrok/ngrok:alpine
@@ -23,25 +24,6 @@ services:
       - piano
     expose:
       - "80"
-  db:
-    image: postgres:16
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
-      start_period: 5s
-    restart: always
-    networks:
-      - piano
-    expose:
-      - "5432"
   api:
     build: ./api
     volumes:
@@ -50,15 +32,29 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     depends_on:
-      db:
-        condition: service_healthy
+      - mongo
     command: "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
     restart: always
     networks:
       - piano
     expose:
       - "8000"
+  mongo:
+    image: mongo
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    command: --quiet
+    restart: always
+    networks:
+      - piano
+    expose:
+      - "27017"
   linebot:
     build: ./linebot
     volumes:
@@ -67,6 +63,7 @@ services:
       LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
       LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       NGROK_DOMAIN: ${NGROK_DOMAIN}
     command: "gunicorn -w 3 --threads 8 -b 0.0.0.0:5000 app:app"
     restart: unless-stopped
@@ -85,8 +82,8 @@ services:
     expose:
       - "8000"
 volumes:
-  pgdata:
   caddy_data:
   caddy_config:
+  mongo_data:
 networks:
   piano:

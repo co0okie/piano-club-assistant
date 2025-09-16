@@ -5,6 +5,19 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import anthropic
 import logging
+from openai import OpenAI
+from rich import print
+
+API = anthropic
+# ANTHROPIC_MODEL = "claude-3-haiku-20240307"
+# ANTHROPIC_MODEL = "claude-3-5-haiku-20241022"
+# ANTHROPIC_MODEL = "claude-3-7-sonnet-20250219"
+ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+# ANTHROPIC_MODEL = "claude-opus-4-20250514"
+# ANTHROPIC_MODEL = "claude-opus-4-1-20250805"
+
+# API = OpenAI
+OPENAI_MODEL = "gpt-5-nano-2025-08-07"
 
 # 儲存對話歷史
 conversation_history = {}
@@ -19,6 +32,7 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 NGROK_DOMAIN = os.getenv('NGROK_DOMAIN', '')
 
 # 驗證設定
@@ -43,6 +57,25 @@ except Exception as e:
     logger.error(f"❌ Claude API 初始化失敗: {e}")
     exit(1)
 
+if API == OpenAI:
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    conversation = openai_client.conversations.create()
+
+def call_openai_api(messages, user_id):
+    resp = openai_client.responses.create(
+        model=OPENAI_MODEL,
+        tools=[
+            {
+                "type": "mcp",
+                "server_label": "piano-club-assistant",
+                "server_url": f"https://{NGROK_DOMAIN}/mcp",
+                "require_approval": "never",
+            },
+        ],
+        input="Write something to console using the print_message tool.",
+        conversation=conversation_history.get(user_id, {}).get("id", None),
+    )
+
 def get_claude_response_with_mcp(user_message, user_id):
     """使用 MCP 增強的 Claude 回應"""
     try:
@@ -60,26 +93,26 @@ def get_claude_response_with_mcp(user_message, user_id):
         
         # 呼叫 Claude API
         response = claude_client.beta.messages.create(
-            model="claude-3-haiku-20240307",
+            model=ANTHROPIC_MODEL,
             max_tokens=1200,
-            temperature=0.7,
             messages=messages,
             mcp_servers=[{
                 "type": "url",
                 "url": f"https://{NGROK_DOMAIN}/mcp",
                 "name": "piano-club-assistant"
             }],
-            system="你是一個友善的AI助理，會用繁體中文回應用戶。請保持對話自然、有幫助且簡潔。",
+            system=f"You are a helpful piano club assistant that helps user with piano related questions and activities. Conversation ID is {user_id}",
             betas=["mcp-client-2025-04-04"]
         )
         
         assistant_response = response.content[-1].text or "<無回應>"
-        logger.info(f"Claude (MCP) 回應: {assistant_response[:100]}...")
+        logger.info(f"Claude (MCP) 回應:")
+        print(response)
         
         # 更新對話歷史
         messages.append({
-            "role": "assistant", 
-            "content": assistant_response
+            "role": response.role or "assistant",
+            "content": response.content or assistant_response
         })
         conversation_history[user_id] = messages
         
