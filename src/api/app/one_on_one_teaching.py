@@ -1,30 +1,38 @@
 from ortools.graph.python.max_flow import SimpleMaxFlow
-from typing import TypeVar, Generic, Optional, DefaultDict
+from typing import TypeVar, Generic, TypedDict
 from pydantic import BaseModel
 import random
-from collections import defaultdict
 
 T = TypeVar("T")
 U = TypeVar("U")
 V = TypeVar("V")
 
 class Teacher(BaseModel, Generic[T, U]):
-    obj: Optional[T] = None
+    obj: T
     max_students: int = 1
     available_time: set[U] = set()
 
 class Student(BaseModel, Generic[T, U]):
-    obj: Optional[T] = None
+    obj: T
     available_time: set[U] = set()
 
-def one_one_teaching_schedule(
+
+class SectionStudentTeacher(BaseModel, Generic[U, T, V]):
+    section: U
+    student: T
+    teacher: V
+
+def schedule(
     students: list[Student[T, U]],
     teachers: list[Teacher[V, U]],
-):
+) -> list[SectionStudentTeacher[U, T, V]]:
+    if not students or not teachers:
+        return []
     # all possible time slots
-    sections = set.union(*[teacher.available_time for teacher in teachers]) \
-             | set.union(*[student.available_time for student in students])
-    sections = list(sections)
+    sections = list(set[U].union(
+        *[s.available_time for s in students],
+        *[t.available_time for t in teachers]
+    ))
     section2id = {v: i for i, v in enumerate(sections)} # without offset
 
     max_flow = SimpleMaxFlow()
@@ -40,8 +48,8 @@ def one_one_teaching_schedule(
     teacher_sink = teachers_p_offset + len(teachers)
 
     # build the graph
-    student_section_edges = []
-    section_teacher_edges = []
+    student_section_edges: list[int] = []
+    section_teacher_edges: list[int] = []
     for i, student in enumerate(students):
         student_id = students_offset + i
         student_p_id = students_p_offset + i
@@ -71,29 +79,26 @@ def one_one_teaching_schedule(
     
     student_section_edges_solution = [edge for edge in student_section_edges if max_flow.flow(edge) > 0]
     section_teacher_edges_solution = [edge for edge in section_teacher_edges if max_flow.flow(edge) > 0]
-
+    
     # combine (student -> section) and (section -> teacher) into (section, student, teacher)
-    class StudentTeacherPair(BaseModel):
-        student: Student[T, U] = Student()
-        teacher: Teacher[V, U] = Teacher()
-    section2student_teacher: defaultdict[U, StudentTeacherPair] = defaultdict(lambda: StudentTeacherPair())
-    for edge in student_section_edges_solution:
-        student = students[max_flow.tail(edge) - students_p_offset]
-        section = sections[max_flow.head(edge) - sections_offset]
-        section_id = max_flow.head(edge) - sections_offset
-        section2student_teacher[section].student = student
-    for edge in section_teacher_edges_solution:
-        section = sections[max_flow.tail(edge) - sections_p_offset]
-        teacher = teachers[max_flow.head(edge) - teachers_offset]
-        section2student_teacher[section].teacher = teacher
-    class SectionStudentTeacher(BaseModel):
-        section: U
-        student: T
-        teacher: V
-    section_student_teacher = [SectionStudentTeacher(section=s, student=p.student.obj, teacher=p.teacher.obj) for s, p in section2student_teacher.items()]
-    print("solution:")
-    for t in section_student_teacher:
-        print(f"  {t.section}: {t.teacher}, {t.student}")
+    section2student = {
+        sections[section_id]: students[student_id].obj
+        for student_id, section_id in [
+            (max_flow.tail(edge) - students_p_offset, max_flow.head(edge) - sections_offset)
+            for edge in student_section_edges_solution
+        ]
+    }
+    section_student_teacher = [
+        SectionStudentTeacher(
+            section=sections[section_id],
+            student=section2student[sections[section_id]],
+            teacher=teachers[teacher_id].obj
+        )
+        for section_id, teacher_id in [
+            (max_flow.tail(edge) - sections_p_offset, max_flow.head(edge) - teachers_offset)
+            for edge in section_teacher_edges_solution
+        ]
+    ]
     return section_student_teacher
 
 if __name__ == "__main__":
@@ -102,7 +107,6 @@ if __name__ == "__main__":
         max_section=6
     ):
         rng = random.Random()
-        # 學生
         students = [
             Student(
                 available_time={rng.randint(1, max_section) for _ in range(rng.randint(1, max_section))},
@@ -110,7 +114,6 @@ if __name__ == "__main__":
             )
             for i in range(n_students)
         ]
-        # 老師
         teachers = [
             Teacher(
                 available_time={rng.randint(1, max_section) for _ in range(rng.randint(1, max_section))},
@@ -132,4 +135,8 @@ if __name__ == "__main__":
     for t in teachers:
         print(f"  {t.obj}, {t.available_time}, {t.max_students}")
 
-    one_one_teaching_schedule(students, teachers)
+    solution = schedule(students, teachers)
+
+    print("solution:")
+    for t in solution:
+        print(f"  {t.section}: {t.teacher}, {t.student}")

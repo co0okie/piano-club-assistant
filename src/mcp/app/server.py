@@ -1,15 +1,13 @@
-from fastmcp import FastMCP, Context
+from fastmcp import FastMCP
 from rich import print
 import requests
 from typing import Annotated, Literal
-from dataclasses import dataclass
-import json
 
 mcp = FastMCP("piano-club-assistant")
 
 @mcp.tool
 def one_on_one_teaching_enrollment(
-    conversation_id: Annotated[str, "Conversation ID"],
+    student_id: Annotated[str, "ask user for his/her student ID"],
     name: Annotated[str, "ask user for his/her name"],
     role: Annotated[
         Literal["teacher", "student"],
@@ -21,8 +19,7 @@ def one_on_one_teaching_enrollment(
             Literal["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
         ]],
         """ask user for all of his/her available session time slots
-e.g., ('Mon', '1') means Monday session 1, ('Fri', 'A') means Friday session A, etc.
-The day of the week: Mon, Tue, Wed, Thu, Fri, Sat, Sun
+e.g., ("Mon", "1") means Monday session 1 (星期一第一節課), ("Fri", "A") means Friday session A (星期五第A節課), etc.
 Session time slot:
     1: 08:10-09:00
     2: 09:10-10:00
@@ -41,7 +38,7 @@ Session time slot:
     ]
 ) -> bool:
     """Facilitate one-on-one teaching registration by asking the user for the required information. Ask only one question at a time instead of presenting everything at once. Do not fabricate any answers—make sure all information comes directly from the user."""
-    print(f"conversation_id: {conversation_id}")
+    print(f"student_id: {student_id}")
     print(f"name: {name}")
     print(f"role: {role}")
     print(f"availble_time: {availble_time}")
@@ -56,8 +53,8 @@ Session time slot:
             case "Sat": return "S"
             case "Sun": return "U"
 
-    requests.post("http://api:8000/one-on-one", json={
-        "conversation_id": conversation_id,
+    requests.put("http://api:8000/one-on-one", json={
+        "student_id": student_id,
         "name": name,
         "role": role,
         "availble_time": [[weekday_abbreviate(day), time] for day, time in availble_time]
@@ -67,10 +64,10 @@ Session time slot:
 
 @mcp.tool
 def fetch_one_on_one_teaching_enrollment_record(
-    conversation_id: Annotated[str, "Conversation ID"]
+    student_id: Annotated[str, "Student ID"]
 ):
-    """Fetch one-on-one teaching enrollment record."""
-    response = requests.get(f"http://api:8000/one-on-one/{conversation_id}")
+    """Fetch one-on-one teaching enrollment record for a given student ID."""
+    response = requests.get(f"http://api:8000/one-on-one/{student_id}")
     return response.json()
     
 
@@ -221,3 +218,19 @@ def fetch_one_on_one_teaching_enrollment_record(
 #     print(f"role: {role_result.data}")
 #     print(f"availble_time: {availble_time_result.data}")
 #     return "One-on-one teaching enrollment completed"
+
+
+@mcp.tool()
+def one_on_one_teaching_schedule():
+    """Fetch one-on-one teaching schedule.
+M: Monday
+T: Tuesday
+W: Wednesday
+R: Thursday
+F: Friday
+S: Saturday
+U: Sunday
+
+Session time slot (第幾節): 1~10, A~D"""
+    response = requests.put("http://api:8000/one-on-one-schedule")
+    return response.json()

@@ -14,9 +14,8 @@
 3. 新增 `.env`，內容舉例:
 
     ```
-    POSTGRES_DB=piano
-    POSTGRES_USER=piano
-    POSTGRES_PASSWORD=piano
+    MONGO_INITDB_ROOT_USERNAME=piano
+    MONGO_INITDB_ROOT_PASSWORD=piano
     ANTHROPIC_API_KEY=
     LINE_CHANNEL_ACCESS_TOKEN=
     LINE_CHANNEL_SECRET=
@@ -34,4 +33,12 @@
 
     ```bash
     docker compose -f infra/docker/compose.dev.yml down -v
+    ```
+
+## 常用指令
+
+- MCP Inspector
+
+    ```bash
+    npx @modelcontextprotocol/inspector
     ```

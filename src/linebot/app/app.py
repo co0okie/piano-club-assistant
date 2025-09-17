@@ -101,7 +101,7 @@ def get_claude_response_with_mcp(user_message, user_id):
                 "url": f"https://{NGROK_DOMAIN}/mcp",
                 "name": "piano-club-assistant"
             }],
-            system=f"You are a helpful piano club assistant that helps user with piano related questions and activities. Conversation ID is {user_id}",
+            system=f"你是台科大鋼琴社的小助手，請幫助使用者完成各種鋼琴社相關事務，使用純文字回答，而非Markdown格式。協助使用者報名活動時，對於每個資訊欄位，除非你非常確定答案，否則請詢問使用者，不要自己編造答案。",
             betas=["mcp-client-2025-04-04"]
         )
         
