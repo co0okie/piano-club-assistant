@@ -102,6 +102,8 @@ def schedule(
     return section_student_teacher
 
 if __name__ == "__main__":
+    WEEKDAYS = ("M", "T", "W", "R", "F", "S", "U")
+    SECTIONS = ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D")
     def make_random_example(
         n_students=3, n_teachers=2,
         max_section=6
@@ -109,23 +111,31 @@ if __name__ == "__main__":
         rng = random.Random()
         students = [
             Student(
-                available_time={rng.randint(1, max_section) for _ in range(rng.randint(1, max_section))},
-                obj=f"s{i+1}"
+                # available_time={rng.randint(1, max_section) for _ in range(rng.randint(1, max_section))},
+                available_time={f"""{WEEKDAYS[rng.randint(0, 6)]}{SECTIONS[rng.randint(0, 13)]}""" 
+                                for _ in range(rng.randint(1, max_section))},
+                obj=f"student{i+1}"
             )
             for i in range(n_students)
         ]
         teachers = [
             Teacher(
-                available_time={rng.randint(1, max_section) for _ in range(rng.randint(1, max_section))},
-                max_students=rng.randint(1, n_students),
-                obj=f"t{j+1}"
+                # available_time={rng.randint(1, max_section) for _ in range(rng.randint(1, max_section))},
+                available_time={f"""{WEEKDAYS[rng.randint(0, 6)]}{SECTIONS[rng.randint(0, 13)]}""" 
+                                for _ in range(rng.randint(1, max_section))},
+                max_students=1,
+                obj=f"teacher{j+1}"
             )
             for j in range(n_teachers)
         ]
         return students, teachers
     
     
-    students, teachers = make_random_example(n_students=10, n_teachers=2, max_section=20)
+    students, teachers = make_random_example(
+        n_students=5, 
+        n_teachers=5, 
+        max_section=30
+    )
 
     print("student, available_time:")
     for s in students:

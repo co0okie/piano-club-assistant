@@ -13,3 +13,5 @@ uv.lock
 /db/
 
 scratch/
+
+/src/*/app/mongo/

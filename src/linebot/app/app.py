@@ -5,7 +5,9 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import anthropic
 import logging
+from typing import Dict, List, Union, Optional
 from openai import OpenAI
+from openai.types.conversations import Conversation as OpenAIConversation
 from rich import print
 
 API = anthropic
@@ -19,8 +21,23 @@ ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 # API = OpenAI
 OPENAI_MODEL = "gpt-5-nano-2025-08-07"
 
-# 儲存對話歷史
-conversation_history = {}
+SYSTEM_PROMPT = (
+    "你是台科大鋼琴社的小助手，請幫助使用者完成各種鋼琴社相關事務，"
+    "使用純文字回答，不要使用任何Markdown或者**粗體**格式。協助使用者報名活動時，對於每個資訊欄位，"
+    "請逐項詢問，不要自行編造答案。"
+)
+
+HELP_TEXT = (
+    "功能說明\n"
+    "— 直接傳訊息開始聊天（保留最近20則上下文）\n"
+    "— 指令：/clear 清除對話、/help 顯示說明\n"
+    "— 範例：\n"
+    "  搜尋近期活動\n"
+    "  協助報名並逐項確認資訊\n"
+)
+
+
+conversation_history: Dict[str, Union[List[dict], OpenAIConversation]] = {}
 
 # 移除舊的 MCP 連接器和狀態變數，改用官方 API設定日誌
 logging.basicConfig(level=logging.INFO)
@@ -28,70 +45,64 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# API 金鑰設定
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 NGROK_DOMAIN = os.getenv('NGROK_DOMAIN', '')
 
-# 驗證設定
-logger.info(f"✅ LINE Token 長度: {len(LINE_CHANNEL_ACCESS_TOKEN)}")
-logger.info(f"✅ LINE Secret 長度: {len(LINE_CHANNEL_SECRET)}")  
-logger.info(f"✅ Claude API Key 長度: {len(ANTHROPIC_API_KEY)}")
-
-# 初始化 LINE Bot API
 try:
     line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
     handler = WebhookHandler(LINE_CHANNEL_SECRET)
-    logger.info("✅ LINE Bot API 初始化成功")
+    logger.info("LINE Bot API 初始化成功")
 except Exception as e:
-    logger.error(f"❌ LINE Bot API 初始化失敗: {e}")
-    exit(1)
+    logger.error(f"LINE Bot API 初始化失敗: {e}")
+    raise
 
-# 初始化 Claude API
-try:
-    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    logger.info("✅ Claude API 初始化成功")
-except Exception as e:
-    logger.error(f"❌ Claude API 初始化失敗: {e}")
-    exit(1)
+if API is anthropic:
+    try:
+        claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        logger.info("Claude (Anthropic) 初始化成功")
+    except Exception as e:
+        logger.error(f"Claude 初始化失敗: {e}")
+        raise
+elif API is OpenAI:
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+        logger.info("OpenAI 初始化成功")
+    except Exception as e:
+        logger.error(f"OpenAI 初始化失敗: {e}")
+        raise
+else:
+    raise RuntimeError("API 常數必須是 anthropic 或 OpenAI")
 
-if API == OpenAI:
-    openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    conversation = openai_client.conversations.create()
-
-def call_openai_api(messages, user_id):
-    resp = openai_client.responses.create(
-        model=OPENAI_MODEL,
-        tools=[
-            {
-                "type": "mcp",
-                "server_label": "piano-club-assistant",
-                "server_url": f"https://{NGROK_DOMAIN}/mcp",
-                "require_approval": "never",
-            },
-        ],
-        input="Write something to console using the print_message tool.",
-        conversation=conversation_history.get(user_id, {}).get("id", None),
-    )
+# def call_openai_api(messages, user_id):
+#     resp = openai_client.responses.create(
+#         model=OPENAI_MODEL,
+#         tools=[
+#             {
+#                 "type": "mcp",
+#                 "server_label": "piano-club-assistant",
+#                 "server_url": f"https://{NGROK_DOMAIN}/mcp",
+#                 "require_approval": "never",
+#             },
+#         ],
+#         input="Write something to console using the print_message tool.",
+#         conversation=conversation_history.get(user_id, {}).id,
+#     )
 
 def get_claude_response_with_mcp(user_message, user_id):
     """使用 MCP 增強的 Claude 回應"""
+    assert claude_client is not None
+
+    if user_id not in conversation_history or not isinstance(conversation_history[user_id], list):
+        conversation_history[user_id] = []
+    
+    messages: List[dict] = conversation_history[user_id]
+    messages = messages[-20:]
+    messages.append({"role": "user", "content": user_message})
+
     try:
-        # 取得用戶對話歷史
-        if user_id not in conversation_history:
-            conversation_history[user_id] = []
-        
-        messages = conversation_history[user_id][-20:]
-        messages.append({
-            "role": "user",
-            "content": user_message
-        })
-        
-        logger.info(f"發送給 Claude (MCP增強): {user_message[:50]}...")
-        
-        # 呼叫 Claude API
         response = claude_client.beta.messages.create(
             model=ANTHROPIC_MODEL,
             max_tokens=1200,
@@ -101,26 +112,31 @@ def get_claude_response_with_mcp(user_message, user_id):
                 "url": f"https://{NGROK_DOMAIN}/mcp",
                 "name": "piano-club-assistant"
             }],
-            system=f"你是台科大鋼琴社的小助手，請幫助使用者完成各種鋼琴社相關事務，使用純文字回答，而非Markdown格式。協助使用者報名活動時，對於每個資訊欄位，除非你非常確定答案，否則請詢問使用者，不要自己編造答案。",
+            system=SYSTEM_PROMPT,
             betas=["mcp-client-2025-04-04"]
         )
-        
-        assistant_response = response.content[-1].text or "<無回應>"
-        logger.info(f"Claude (MCP) 回應:")
+        assistant_response = "\n".join([
+            content.text
+            for content in response.content
+            if hasattr(content, "text") and content.text
+        ])
+        if assistant_response == "":
+            assistant_response = "<無回應>"
+        logger.info(f"Claude 回應:")
         print(response)
         
         # 更新對話歷史
         messages.append({
-            "role": response.role or "assistant",
-            "content": response.content or assistant_response
+            "role": "assistant",
+            "content": assistant_response
         })
         conversation_history[user_id] = messages
         
         return assistant_response
         
     except Exception as e:
-        logger.error(f"Claude MCP API 錯誤: {e}")
-        return "抱歉，我現在無法回應您的訊息。請稍後再試。 🔧"
+        logger.error(f"Claude API 錯誤: {e}")
+        return "Claude API 錯誤"
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -147,10 +163,12 @@ def handle_text_message(event):
     user_message = event.message.text
     
     logger.info(f"收到用戶 {user_id} 的訊息: {user_message}")
+    if user_id in conversation_history:
+        print(conversation_history[user_id])
     
     try:
         # 特殊命令處理
-        if user_message.lower() in ['/clear', '/reset', '清除對話']:
+        if user_message.lower() == '/clear':
             if user_id in conversation_history:
                 del conversation_history[user_id]
                 response_msg = "✅ 對話歷史已清除！"

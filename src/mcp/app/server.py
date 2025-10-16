@@ -1,43 +1,39 @@
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
 from rich import print
-import requests
+from pymongo import MongoClient
 from typing import Annotated, Literal
+import os
+import one_on_one_teaching
+from mongo.schema import OneOnOneFormModel, ScheduleModel, Schedule, WEEKDAYS, SECTIONS
 
-mcp = FastMCP("piano-club-assistant")
+client = MongoClient(f"mongodb://{os.getenv('MONGO_INITDB_ROOT_USERNAME')}:{os.getenv('MONGO_INITDB_ROOT_PASSWORD')}@mongo:27017")
+db = client["piano-club"]
+one_on_one_enroll_collection = db["one-on-one-teaching-enrollments"]
+one_on_one_schedule_collection = db["one-on-one-teaching-schedule"]
+
+mcp = FastMCP("piano-club")
+
+def join_piano_club():
+    pass
 
 @mcp.tool
-def one_on_one_teaching_enrollment(
-    student_id: Annotated[str, "ask user for his/her student ID"],
-    name: Annotated[str, "ask user for his/her name"],
+def register_one_on_one_tutoring(
     role: Annotated[
         Literal["teacher", "student"],
-        "ask user if he/she wants to be a teacher or a student"
+        "使用者想在一對一教學中擔任老師或學生?"
     ],
+    student_id: Annotated[str, "學號"],
+    name: Annotated[str, "名字"],
     availble_time: Annotated[
         set[tuple[
             Literal["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
             Literal["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "B", "C", "D"]
         ]],
-        """ask user for all of his/her available session time slots
-e.g., ("Mon", "1") means Monday session 1 (星期一第一節課), ("Fri", "A") means Friday session A (星期五第A節課), etc.
-Session time slot:
-    1: 08:10-09:00
-    2: 09:10-10:00
-    3: 10:20-11:10
-    4: 11:20-12:10
-    5: 12:20-13:10
-    6: 13:20-14:10
-    7: 14:20-15:10
-    8: 15:30-16:20
-    9: 16:30-17:20
-    10: 17:20-18:10
-    A: 18:25-19:15
-    B: 19:20-20:10
-    C: 20:15-21:05
-    D: 21:10-22:00"""
+        """使用者可以上課的所有時間，以台科大上課節次表示
+例如，("Mon", "1") 代表星期一第一節課, ("Fri", "A") 代表星期五第A節課，依此類推"""
     ]
-) -> bool:
-    """Facilitate one-on-one teaching registration by asking the user for the required information. Ask only one question at a time instead of presenting everything at once. Do not fabricate any answers—make sure all information comes directly from the user."""
+) -> str:
+    """報名一對一教學，在送出報名請求前，請先向使用者確認所有欄位皆正確再送出請求。"""
     print(f"student_id: {student_id}")
     print(f"name: {name}")
     print(f"role: {role}")
@@ -52,177 +48,41 @@ Session time slot:
             case "Fri": return "F"
             case "Sat": return "S"
             case "Sun": return "U"
-
-    requests.put("http://api:8000/one-on-one", json={
-        "student_id": student_id,
-        "name": name,
-        "role": role,
-        "availble_time": [[weekday_abbreviate(day), time] for day, time in availble_time]
-    })
-    return True
+    
+    one_on_one_enroll_collection.replace_one(
+        {"student_id": student_id},
+        {
+            "student_id": student_id,
+            "name": name,
+            "role": role,
+            "availble_time": [[weekday_abbreviate(day), time] for day, time in availble_time]
+        },
+        upsert=True
+    )
+    return "報名成功"
 
 
 @mcp.tool
-def fetch_one_on_one_teaching_enrollment_record(
-    student_id: Annotated[str, "Student ID"]
+def get_one_on_one_tutoring_registration(
+    student_id: Annotated[str, "使用者的學號"]
 ):
-    """Fetch one-on-one teaching enrollment record for a given student ID."""
-    response = requests.get(f"http://api:8000/one-on-one/{student_id}")
-    return response.json()
-    
+    """取得某個學號的一對一教學報名紀錄"""
 
-# @dataclass
-# class SessionTable:
-#     Mon1: bool
-#     Mon2: bool
-#     Mon3: bool
-#     Mon4: bool
-#     Mon5: bool
-#     Mon6: bool
-#     Mon7: bool
-#     Mon8: bool
-#     Mon9: bool
-#     Mon10: bool
-#     MonA: bool
-#     MonB: bool
-#     MonC: bool
-#     MonD: bool
-#     Tue1: bool
-#     Tue2: bool
-#     Tue3: bool
-#     Tue4: bool
-#     Tue5: bool
-#     Tue6: bool
-#     Tue7: bool
-#     Tue8: bool
-#     Tue9: bool
-#     Tue10: bool
-#     TueA: bool
-#     TueB: bool
-#     TueC: bool
-#     TueD: bool
-#     Wed1: bool
-#     Wed2: bool
-#     Wed3: bool
-#     Wed4: bool
-#     Wed5: bool
-#     Wed6: bool
-#     Wed7: bool
-#     Wed8: bool
-#     Wed9: bool
-#     Wed10: bool
-#     WedA: bool
-#     WedB: bool
-#     WedC: bool
-#     WedD: bool
-#     Thu1: bool
-#     Thu2: bool
-#     Thu3: bool
-#     Thu4: bool
-#     Thu5: bool
-#     Thu6: bool
-#     Thu7: bool
-#     Thu8: bool
-#     Thu9: bool
-#     Thu10: bool
-#     ThuA: bool
-#     ThuB: bool
-#     ThuC: bool
-#     ThuD: bool
-#     Fri1: bool
-#     Fri2: bool
-#     Fri3: bool
-#     Fri4: bool
-#     Fri5: bool
-#     Fri6: bool
-#     Fri7: bool
-#     Fri8: bool
-#     Fri9: bool
-#     Fri10: bool
-#     FriA: bool
-#     FriB: bool
-#     FriC: bool
-#     FriD: bool
-#     Sat1: bool
-#     Sat2: bool
-#     Sat3: bool
-#     Sat4: bool
-#     Sat5: bool
-#     Sat6: bool
-#     Sat7: bool
-#     Sat8: bool
-#     Sat9: bool
-#     Sat10: bool
-#     SatA: bool
-#     SatB: bool
-#     SatC: bool
-#     SatD: bool
-#     Sun1: bool
-#     Sun2: bool
-#     Sun3: bool
-#     Sun4: bool
-#     Sun5: bool
-#     Sun6: bool
-#     Sun7: bool
-#     Sun8: bool
-#     Sun9: bool
-#     Sun10: bool
-#     SunA: bool
-#     SunB: bool
-#     SunC: bool
-#     SunD: bool
+    doc = one_on_one_enroll_collection.find_one({"student_id": student_id}, {"_id": 0})
+    return doc
 
-# @mcp.tool
-# async def one_on_one_teaching_enrollment(
-#     conversation_id: Annotated[str, "Conversation ID"],
-#     ctx: Context
-# ) -> str:
-#     """Facilitate one-on-one teaching registration by asking the user for the required information. Ask only one question at a time instead of presenting everything at once. Do not fabricate any answers—make sure all information comes directly from the user."""
-
-#     name_result = await ctx.elicit("What is the user's name?", str)
-#     if name_result.action != "accept":
-#         return "One-on-one teaching enrollment cancelled"
+def get_all_one_on_one_tutoring_registrations():
+    """取得所有一對一教學報名紀錄"""
     
-#     role_result = await ctx.elicit(
-#         "Does user want to be a teacher or a student?", 
-#         Literal["teacher", "student"]
-#     )
-#     if role_result.action != "accept":
-#         return "One-on-one teaching enrollment cancelled"
-    
-#     availble_time_result = await ctx.elicit(
-#         """What are all of the user's available session time slots?
-# e.g., Mon1 means Monday session 1, FriA means Friday session A, etc.
-# The day of the week: Mon, Tue, Wed, Thu, Fri, Sat, Sun
-# Session time slot:
-#     1: 08:10-09:00
-#     2: 09:10-10:00
-#     3: 10:20-11:10
-#     4: 11:20-12:10
-#     5: 12:20-13:10
-#     6: 13:20-14:10
-#     7: 14:20-15:10
-#     8: 15:30-16:20
-#     9: 16:30-17:20
-#     10: 17:20-18:10
-#     A: 18:25-19:15
-#     B: 19:20-20:10
-#     C: 20:15-21:05
-#     D: 21:10-22:00""",
-#         SessionTable
-#     )
-#     if availble_time_result.action != "accept":
-#         return "One-on-one teaching enrollment cancelled"
-    
-#     print(f"name: {name_result.data}")
-#     print(f"role: {role_result.data}")
-#     print(f"availble_time: {availble_time_result.data}")
-#     return "One-on-one teaching enrollment completed"
-
+    return [
+        OneOnOneFormModel.model_validate(form)
+        for form in one_on_one_enroll_collection.find({}, {"_id": 0})
+    ]
+mcp.tool(get_all_one_on_one_tutoring_registrations)
 
 @mcp.tool()
-def one_on_one_teaching_schedule():
-    """Fetch one-on-one teaching schedule.
+def update_one_on_one_tutoring_schedule():
+    """取得一對一教學課表
 M: Monday
 T: Tuesday
 W: Wednesday
@@ -232,5 +92,49 @@ S: Saturday
 U: Sunday
 
 Session time slot (第幾節): 1~10, A~D"""
-    response = requests.put("http://api:8000/one-on-one-schedule")
-    return response.json()
+    
+    forms = get_all_one_on_one_tutoring_registrations()
+    result = one_on_one_teaching.schedule(
+        students=[
+            one_on_one_teaching.Student(
+                available_time=form.availble_time,
+                obj=form
+            )
+            for form in forms if form.role == "student"
+        ],
+        teachers=[
+            one_on_one_teaching.Teacher(
+                available_time=form.availble_time,
+                max_students=1,
+                obj=form
+            )
+            for form in forms if form.role == "teacher"
+        ]
+    )
+    print([f"{t.section}: {t.teacher.name} teach {t.student.name}" for t in result])
+    
+    schedule: Schedule = {
+        weekday: {section: None for section in SECTIONS} for weekday in WEEKDAYS
+    }
+    for t in result:
+        schedule[t.section[0]][t.section[1]] = {
+            "teacher": t.teacher.name,
+            "student": t.student.name
+        }
+    schedule_model = ScheduleModel.model_validate(schedule)
+
+    update_result = one_on_one_schedule_collection.replace_one(
+        {},
+        schedule_model.model_dump(mode="json"),
+        upsert=True
+    )
+    print(update_result)
+    return schedule_model
+
+@mcp.tool
+def get_one_on_one_tutoring_schedule():
+    """取得目前一對一教學課表"""
+    doc = one_on_one_schedule_collection.find_one({}, {"_id": 0})
+    if doc is None:
+        return None
+    return ScheduleModel.model_validate(doc)

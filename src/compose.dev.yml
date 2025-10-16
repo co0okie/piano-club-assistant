@@ -13,35 +13,16 @@ services:
   caddy:
     image: caddy:2
     volumes:
-      - ./caddy:/etc/caddy
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
       - linebot
     restart: unless-stopped
     networks:
       - piano
     expose:
       - "80"
-  api:
-    build: ./api
-    volumes:
-      - ./api/app:/app
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    depends_on:
-      - mongo
-    command: "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-    restart: always
-    networks:
-      - piano
-    expose:
-      - "8000"
   mongo:
     image: mongo
     volumes:
@@ -49,32 +30,41 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    command: --quiet
+    command: mongod --quiet --logpath /dev/null
     restart: always
     networks:
       - piano
     expose:
       - "27017"
   linebot:
-    build: ./linebot
+    build:
+      context: ./
+      dockerfile: ./linebot/Dockerfile
     volumes:
       - ./linebot/app:/app
+      - ./mongo/schema.py:/app/mongo/schema.py:ro
     environment:
       LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
       LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       NGROK_DOMAIN: ${NGROK_DOMAIN}
-    command: "gunicorn -w 3 --threads 8 -b 0.0.0.0:5000 app:app"
+    command: "gunicorn -w 1 --threads 8 -b 0.0.0.0:5000 app:app"
     restart: unless-stopped
     networks:
       - piano
     expose:
       - "5000"
   mcp:
-    build: ./mcp
+    build:
+      context: ./
+      dockerfile: ./mcp/Dockerfile
     volumes:
       - ./mcp/app:/app
+      - ./mongo/schema.py:/app/mongo/schema.py:ro
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     command: fastmcp run server.py --transport http --host 0.0.0.0 --port 8000
     restart: unless-stopped
     networks:

@@ -9,10 +9,6 @@ http://:80 {
 		reverse_proxy linebot:5000
 	}
 
-	handle_path /api/* {
-		reverse_proxy api:8000
-	}
-
     handle /mcp* {
         reverse_proxy mcp:8000
     }
