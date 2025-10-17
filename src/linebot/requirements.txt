@@ -4,3 +4,4 @@ gunicorn
 anthropic
 openai
 rich
+pymongo

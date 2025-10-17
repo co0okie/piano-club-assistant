@@ -1,22 +1,88 @@
 from fastmcp import FastMCP, Context
+from fastmcp.server.middleware import Middleware, MiddlewareContext
+from fastmcp.exceptions import ToolError
+from fastmcp.server.dependencies import get_http_headers
 from rich import print
 from pymongo import MongoClient
 from typing import Annotated, Literal
 import os
 import one_on_one_teaching
-from mongo.schema import OneOnOneFormModel, ScheduleModel, Schedule, WEEKDAYS, SECTIONS
+from mongo.schema import (
+    OneOnOneFormModel, ScheduleModel, Schedule, WEEKDAYS, SECTIONS,
+    UserModel, UserRole
+)
+import logging
+from rich.logging import RichHandler
 
 client = MongoClient(f"mongodb://{os.getenv('MONGO_INITDB_ROOT_USERNAME')}:{os.getenv('MONGO_INITDB_ROOT_PASSWORD')}@mongo:27017")
 db = client["piano-club"]
 one_on_one_enroll_collection = db["one-on-one-teaching-enrollments"]
 one_on_one_schedule_collection = db["one-on-one-teaching-schedule"]
+logging.getLogger("pymongo").setLevel(logging.WARN)
 
 mcp = FastMCP("piano-club")
+
+logger = logging.getLogger(mcp.name)
+logger.setLevel(logging.DEBUG)
+logger.handlers = [RichHandler(show_time=False, show_level=False)]
+
+# db.users.replace_one(
+#     {"line_user_id": "U185a46e21c14044575e4a064a1719a43"},
+#     UserModel(
+#         line_user_id="U185a46e21c14044575e4a064a1719a43",
+#         student_id="B11107051",
+#         name="李品翰",
+#         role=UserRole.ADMIN
+#     ).model_dump(mode="json"),
+#     upsert=True
+# )
+
+def get_user():
+    authorization = get_http_headers().get("authorization")
+
+    if authorization is None:
+        raise ToolError("Unauthorized: Missing access token")
+
+    scheme, line_user_id = authorization.split()
+
+    if scheme.lower() != "bearer":
+        raise ToolError("Unauthorized: Invalid authorization scheme")
+    
+    doc = db.users.find_one({"line_user_id": line_user_id})
+
+    if doc is None:
+        raise ToolError("Unauthorized: User not found")
+    
+    return UserModel.model_validate(doc)
+
+class AuthMiddleware(Middleware):
+    async def on_list_tools(self, context: MiddlewareContext, call_next):
+        result = await call_next(context)
+        
+        user = get_user()
+        
+        filtered_tools = [
+            tool for tool in result 
+            if user.role in tool.tags
+        ]
+        
+        return filtered_tools
+    
+    async def on_call_tool(self, context: MiddlewareContext, call_next):
+        user = get_user()
+
+        if context.fastmcp_context:
+            tool = await context.fastmcp_context.fastmcp.get_tool(context.message.name)
+            
+            if user.role not in tool.tags:
+                raise ToolError("Unauthorized: User does not have permission to call this tool")
+        
+        return await call_next(context)
+mcp.add_middleware(AuthMiddleware())
 
 def join_piano_club():
     pass
 
-@mcp.tool
 def register_one_on_one_tutoring(
     role: Annotated[
         Literal["teacher", "student"],
@@ -60,9 +126,8 @@ def register_one_on_one_tutoring(
         upsert=True
     )
     return "報名成功"
+mcp.tool(register_one_on_one_tutoring, tags={UserRole.MEMBER, UserRole.ADMIN})
 
-
-@mcp.tool
 def get_one_on_one_tutoring_registration(
     student_id: Annotated[str, "使用者的學號"]
 ):
@@ -70,6 +135,7 @@ def get_one_on_one_tutoring_registration(
 
     doc = one_on_one_enroll_collection.find_one({"student_id": student_id}, {"_id": 0})
     return doc
+mcp.tool(get_one_on_one_tutoring_registration, tags={UserRole.MEMBER, UserRole.ADMIN})
 
 def get_all_one_on_one_tutoring_registrations():
     """取得所有一對一教學報名紀錄"""
@@ -78,9 +144,8 @@ def get_all_one_on_one_tutoring_registrations():
         OneOnOneFormModel.model_validate(form)
         for form in one_on_one_enroll_collection.find({}, {"_id": 0})
     ]
-mcp.tool(get_all_one_on_one_tutoring_registrations)
+mcp.tool(get_all_one_on_one_tutoring_registrations, tags={UserRole.ADMIN})
 
-@mcp.tool()
 def update_one_on_one_tutoring_schedule():
     """取得一對一教學課表
 M: Monday
@@ -130,11 +195,12 @@ Session time slot (第幾節): 1~10, A~D"""
     )
     print(update_result)
     return schedule_model
+mcp.tool(update_one_on_one_tutoring_schedule, tags={UserRole.ADMIN})
 
-@mcp.tool
 def get_one_on_one_tutoring_schedule():
     """取得目前一對一教學課表"""
     doc = one_on_one_schedule_collection.find_one({}, {"_id": 0})
     if doc is None:
         return None
     return ScheduleModel.model_validate(doc)
+mcp.tool(get_one_on_one_tutoring_schedule, tags={UserRole.GENERAL, UserRole.MEMBER, UserRole.ADMIN})
