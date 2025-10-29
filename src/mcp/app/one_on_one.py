@@ -3,33 +3,33 @@ from typing import TypeVar, Generic, TypedDict
 from pydantic import BaseModel
 import random
 
-T = TypeVar("T")
-U = TypeVar("U")
-V = TypeVar("V")
+StudentType = TypeVar("StudentType")
+Section = TypeVar("Section")
+TeacherType = TypeVar("TeacherType")
 
-class Teacher(BaseModel, Generic[T, U]):
-    obj: T
+class Teacher(BaseModel, Generic[StudentType, Section]):
+    obj: StudentType
     max_students: int = 1
-    available_time: set[U] = set()
+    available_time: set[Section] = set()
 
-class Student(BaseModel, Generic[T, U]):
-    obj: T
-    available_time: set[U] = set()
+class Student(BaseModel, Generic[StudentType, Section]):
+    obj: StudentType
+    available_time: set[Section] = set()
 
 
-class SectionStudentTeacher(BaseModel, Generic[U, T, V]):
-    section: U
-    student: T
-    teacher: V
+class SectionStudentTeacher(BaseModel, Generic[Section, StudentType, TeacherType]):
+    section: Section
+    student: StudentType
+    teacher: TeacherType
 
 def schedule(
-    students: list[Student[T, U]],
-    teachers: list[Teacher[V, U]],
-) -> list[SectionStudentTeacher[U, T, V]]:
+    students: list[Student[StudentType, Section]],
+    teachers: list[Teacher[TeacherType, Section]],
+) -> list[SectionStudentTeacher[Section, StudentType, TeacherType]]:
     if not students or not teachers:
         return []
     # all possible time slots
-    sections = list(set[U].union(
+    sections = list(set[Section].union(
         *[s.available_time for s in students],
         *[t.available_time for t in teachers]
     ))
