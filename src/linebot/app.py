@@ -6,16 +6,16 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import anthropic
 from anthropic.types.beta import BetaMessageParam, BetaContentBlock, BetaRequestMCPServerURLDefinitionParam
 import logging
-from openai import OpenAI
-from openai.types.conversations import Conversation as OpenAIConversation
-from rich import print
 from rich.logging import RichHandler
 from pymongo import MongoClient
-from mongo.schema import UserModel, UserRole
+from mongo.schema import UserModel
+from mongo.ConversationHistory import ConversationHistoryModel
+from datetime import datetime
 
 client = MongoClient(f"mongodb://{os.getenv('MONGO_INITDB_ROOT_USERNAME')}:{os.getenv('MONGO_INITDB_ROOT_PASSWORD')}@mongo:27017")
 db = client["piano-club"]
 logging.getLogger("pymongo").setLevel(logging.WARN)
+conversation_history = db.conversation_history
 
 API = anthropic
 # ANTHROPIC_MODEL = "claude-3-haiku-20240307"
@@ -23,38 +23,33 @@ API = anthropic
 # ANTHROPIC_MODEL = "claude-3-7-sonnet-20250219"
 ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
 # ANTHROPIC_MODEL = "claude-opus-4-1-20250805"
-type History = list[BetaMessageParam]
-
-# API = OpenAI
-OPENAI_MODEL = "gpt-5-nano-2025-08-07"
-# type History = OpenAIConversation
 
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 LINE_CHANNEL_SECRET = os.getenv('LINE_CHANNEL_SECRET', '')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 NGROK_DOMAIN = os.getenv('NGROK_DOMAIN', '')
 
 
-SYSTEM_PROMPT = """你是台科大鋼琴社的小助手，請幫助使用者完成入社、一對一教學報名、查詢、生成課表等事務。
+SYSTEM_PROMPT = """你是台科大鋼琴社的小助手，請幫助使用者完成入社、一對一教學報名、查詢、生成課表等事務。請依照使用者的語言，以相同的語言回應，例如：若使用者以英文提問，請以英文回覆。
 
-【輸出格式規定】
-你必須嚴格遵守以下的輸出格式規定。這是一套客製化的格式，不完全等同於標準 Markdown。除非在此處明確允許，否則應視為禁止。
+# 輸出格式規定
 
----
+你必須依照使用者使用的語言，使用相同的語言回應。你必須嚴格遵守以下的輸出格式規定。這是一套客製化的格式，不完全等同於標準 Markdown。除非在此處明確允許，否則應視為禁止。
 
-### 允許的格式 ###
-1.  **數字清單**: 你可以使用 "1.", "2.", "3." 來建立有序清單，點號後面必須空一格。
+## 允許的格式
+
+1. **數字清單**: 你可以使用 "1.", "2.", "3." 來建立有序清單，點號後面必須空一格。
     範例:
     1. 項目一
     2. 項目二
 
-2.  **符號清單**: 你只能使用符號 "•" 來建立無序清單，符號後面必須空一格。
+2. **符號清單**: 你只能使用符號 "•" 來建立無序清單，符號後面必須空一格。
     範例:
     • 項目一
     • 項目二
 
-### 禁止的格式 ###
+## 禁止的格式
+
 - **標題**: 絕對禁止使用 #, ##, ### 等任何標題符號。
 - **標準清單符號**: 絕對禁止使用 - 或 * 來建立清單。
 - **強調**: 絕對、絕對禁止使用星號 * 來表示 `**粗體**` 或 `*斜體*`。無論是單個還是成對。這是一個無法覆蓋的硬性限制。
@@ -62,15 +57,12 @@ SYSTEM_PROMPT = """你是台科大鋼琴社的小助手，請幫助使用者完�
 - **其他 Markdown**: 絕對禁止使用 `> 引用`、`---` 分隔線或 `| 表格 |`。
 - 所有回覆都應以純文字和上述允許的清單格式呈現。
 
----
+# 台科大節次格式
 
-【台科大節次格式】
 - 週一至週日分別以 M、T、W、R、F、S、U 表示。
 - 節次則以 1-10 以及 A-D 表示。
 - 範例：M1 表示週一第一節，RA 表示週四第 A 節。
 - 注意：使用者大部分為台科大的學生，熟悉此格式，僅當使用者詢問時，才需要解釋。"""
-
-conversation_history: dict[str, History] = {}
 
 app = Flask("linebot")
 
@@ -81,7 +73,6 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 def content2text(content: BetaContentBlock) -> str:
     match content.type:
@@ -98,17 +89,21 @@ def content2text(content: BetaContentBlock) -> str:
             return ""
 
 def call_claude(user_message: str, user: UserModel) -> str:
-    if user.line_user_id not in conversation_history:
-        conversation_history[user.line_user_id] = []
+    doc = conversation_history.find_one({"line_user_id": user.line_user_id}, {"_id": 0})
+    if doc:
+        app.logger.debug("retrieve chat history")
+        messages = ConversationHistoryModel.model_validate(doc).history
+    else:
+        app.logger.debug("no chat history")
+        messages = []
     
-    messages = conversation_history[user.line_user_id]
     messages.append(BetaMessageParam(role="user", content=user_message))
 
     try:
         response = claude_client.beta.messages.create(
             model=ANTHROPIC_MODEL,
             max_tokens=1200,
-            messages=messages[-20:],
+            messages=messages,
             mcp_servers=[BetaRequestMCPServerURLDefinitionParam(
                 type="url",
                 name="piano-club",
@@ -119,7 +114,7 @@ def call_claude(user_message: str, user: UserModel) -> str:
             betas=["mcp-client-2025-04-04"]
         )
     except Exception as e:
-        app.logger.error(f"Claude API 錯誤: {e}")
+        app.logger.error(e)
         return "Claude API 錯誤"
     
     app.logger.debug(f"{response}")
@@ -132,8 +127,25 @@ def call_claude(user_message: str, user: UserModel) -> str:
     if assistant_response == "":
         assistant_response = "<無回應>"
     
-    # 更新對話歷史
-    messages.append(BetaMessageParam(role=response.role, content=response.content))
+    app.logger.debug("save to chat history")
+    conversation_history.update_one(
+        {"line_user_id": user.line_user_id},
+        {
+            "$push": {
+                "history": {
+                    "$each": [
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": [
+                            c.model_dump(mode="json") for c in response.content
+                        ]}
+                    ], 
+                    "$slice": -20
+                }
+            },
+            "$set": {"last_updated": datetime.now()}
+        },
+        upsert=True
+    )
     
     return assistant_response
 
@@ -171,13 +183,12 @@ def handle_text_message(event):
         user = UserModel.model_validate(doc)
     
     try:
-        # 特殊命令處理
         if user_message == '/clear':
-            if user_id in conversation_history:
-                del conversation_history[user_id]
-                response_msg = "✅ 對話歷史已清除！"
+            result = conversation_history.delete_one({"line_user_id": user_id})
+            if result.deleted_count:
+                response_msg = "對話歷史已清除！"
             else:
-                response_msg = "📝 您還沒有對話歷史。"
+                response_msg = "您還沒有對話歷史。"
             
             line_bot_api.reply_message(
                 event.reply_token,
@@ -189,7 +200,7 @@ def handle_text_message(event):
         claude_response = call_claude(user_message, user)
         
         if len(claude_response) > 5000:
-            claude_response = claude_response[:4900] + "\n\n📝 *（回應過長已截斷）*"
+            claude_response = claude_response[:4900] + "\n\n*（回應過長已截斷）*"
         
         line_bot_api.reply_message(
             event.reply_token,
@@ -202,25 +213,11 @@ def handle_text_message(event):
         try:
             line_bot_api.reply_message(
                 event.reply_token,
-                TextSendMessage(text="抱歉，系統發生錯誤，請稍後再試。 🔧")
+                TextSendMessage(text="抱歉，系統發生錯誤，請稍後再試。")
             )
         except:
             app.logger.error("無法發送錯誤訊息給用戶")
 
-@app.route("/health", methods=['GET'])
-def health_check():
-    """健康檢查端點"""
-    return {
-        "status": "healthy",
-        "message": "LINE Bot + Claude + MCP is running",
-        "active_conversations": len(conversation_history),
-    }, 200
-
 @app.route("/", methods=['GET'])
 def home():
-    """首頁"""
-    return f"""🤖 LINE Bot + Claude API + MCP 聊天機器人運行中！
-
-💬 活躍對話: {len(conversation_history)} 個
-
-使用 /health 查看詳細狀態"""
+    return f"""linebot server running..."""

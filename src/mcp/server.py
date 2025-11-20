@@ -103,14 +103,19 @@ def join_club(
     )
     doc = db_users.find_one({"line_user_id": line_user_id})
     if doc is None:
-        db_users.insert_one(user.model_dump(mode="json"))
+        logger.info(f"使用者 {line_user_id} 新入社，名字 {name} 學號 {student_id}")
+        result = db_users.insert_one(user.model_dump(mode="json"))
+        logger.debug(result)
         return "入社成功"
     else:
-        user = UserModel.model_validate(doc)
-        if user.role in {UserRole.MEMBER, UserRole.ADMIN}:
+        old_user = UserModel.model_validate(doc)
+        if old_user.role in {UserRole.MEMBER, UserRole.ADMIN}:
+            logger.info(f"使用者 {line_user_id} 重複入社，名字 {name} 學號 {student_id}")
             return "你已經是社員了，無需重複入社"
         else:
-            db_users.replace_one({"line_user_id": line_user_id}, user.model_dump(mode="json"))
+            logger.info(f"使用者 {line_user_id} 入社，名字 {name} 學號 {student_id}")
+            result = db_users.replace_one({"line_user_id": line_user_id}, user.model_dump(mode="json"))
+            logger.debug(result)
             return "入社成功"
 mcp.tool(join_club, tags={UserRole.GENERAL})
 
@@ -170,7 +175,7 @@ def update_one_on_one_tutoring_schedule():
     users: dict[str, UserModel]= dict()
     with db_users.find(
         {"line_user_id": {"$in": [form.line_user_id for form in forms]}},
-        {"_id": 0, "student_id": 0, "role": 0}
+        {"_id": 0}
     ) as cursor:
         for user in cursor:
             user_model = UserModel.model_validate(user)

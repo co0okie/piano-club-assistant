@@ -36,6 +36,8 @@ services:
       - piano
     expose:
       - "27017"
+    ports:
+      - "27017:27017"
   linebot:
     build:
       context: ./
@@ -51,7 +53,7 @@ services:
       NGROK_DOMAIN: ${NGROK_DOMAIN}
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
-    command: "gunicorn -w 1 --threads 8 -b 0.0.0.0:5000 app.app:app"
+    command: "gunicorn -w 4 --threads 8 -b 0.0.0.0:5000 app.app:app"
     restart: unless-stopped
     networks:
       - piano
