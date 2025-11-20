@@ -7,5 +7,5 @@ WORKDIR /app
 COPY ./mcp/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./mcp/app/* .
-COPY ./mongo/schema.py ./mongo/schema.py
+COPY ./mcp ./app
+COPY ./mongo ./mongo

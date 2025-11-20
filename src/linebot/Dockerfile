@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
+
 COPY ./linebot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY ./linebot/app/* .
-COPY ./mongo/schema.py ./mongo/schema.py
+
+COPY ./linebot ./app
+COPY ./mongo ./mongo
