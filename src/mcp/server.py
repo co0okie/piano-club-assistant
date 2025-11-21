@@ -18,6 +18,7 @@ db = client["piano-club"]
 db_users = db.users
 db_one_on_one_enroll = db.one_on_one_enroll
 db_one_on_one_schedule = db.one_on_one_schedule
+db_admin_requests = db.admin_requests
 logging.getLogger("pymongo").setLevel(logging.WARN)
 
 mcp = FastMCP("piano-club")
@@ -26,16 +27,16 @@ logger = logging.getLogger(mcp.name)
 logger.setLevel(logging.DEBUG)
 logger.handlers = [RichHandler(show_time=False, show_level=False)]
 
-# db_users.replace_one(
-#     {"line_user_id": "U185a46e21c14044575e4a064a1719a43"},
-#     UserModel(
-#         line_user_id="U185a46e21c14044575e4a064a1719a43",
-#         student_id="B11107051",
-#         name="李品翰",
-#         role=UserRole.ADMIN
-#     ).model_dump(mode="json"),
-#     upsert=True
-# )
+db_users.replace_one(
+    {"line_user_id": "U185a46e21c14044575e4a064a1719a43"},
+    UserModel(
+        line_user_id="U185a46e21c14044575e4a064a1719a43",
+        student_id="B11107051",
+        name="李品翰",
+        role=UserRole.ADMIN
+    ).model_dump(mode="json"),
+    upsert=True
+)
 
 def get_line_user_id():
     authorization = get_http_headers().get("authorization")
@@ -153,7 +154,7 @@ mcp.tool(register_one_on_one_tutoring, tags={UserRole.MEMBER, UserRole.ADMIN})
 def get_one_on_one_tutoring_registration():
     """取得使用者的一對一教學報名紀錄"""
     line_user_id = get_line_user_id()
-    doc = db_one_on_one_enroll.find_one({"line_user_id": line_user_id}, {"_id": 0, "line_user_id": 0})
+    doc = db_one_on_one_enroll.find_one({"line_user_id": line_user_id}, {"_id": 0})
     if doc is None:
         return "未找到報名紀錄"
     else:
@@ -162,17 +163,24 @@ mcp.tool(get_one_on_one_tutoring_registration, tags={UserRole.MEMBER, UserRole.A
 
 def get_all_one_on_one_tutoring_registrations():
     """取得所有一對一教學報名紀錄"""
-    
-    return [
+    forms = db_one_on_one_enroll.find({}, {"_id": 0})
+    form_model = [
         OneOnOneFormModel.model_validate(form)
-        for form in db_one_on_one_enroll.find({}, {"_id": 0, "line_user_id": 0})
+        for form in forms
     ]
+    logger.debug(form_model)
+    if len(form_model) == 0:
+        return "目前沒有任何一對一教學報名紀錄"
+    return form_model
 mcp.tool(get_all_one_on_one_tutoring_registrations, tags={UserRole.ADMIN})
 
 def update_one_on_one_tutoring_schedule():
     """更新並取得一對一教學課表"""
-    forms = get_all_one_on_one_tutoring_registrations()
-    users: dict[str, UserModel]= dict()
+    forms = [
+        OneOnOneFormModel.model_validate(form)
+        for form in db_one_on_one_enroll.find({}, {"_id": 0})
+    ]
+    users: dict[str, UserModel] = dict()
     with db_users.find(
         {"line_user_id": {"$in": [form.line_user_id for form in forms]}},
         {"_id": 0}
@@ -225,3 +233,55 @@ def get_one_on_one_tutoring_schedule():
         return "尚未有一對一教學課表，請等待幹部更新課表"
     return ScheduleModel.model_validate(doc)
 mcp.tool(get_one_on_one_tutoring_schedule, tags={UserRole.GENERAL, UserRole.MEMBER, UserRole.ADMIN})
+
+def request_admin():
+    """申請成為幹部"""
+    line_user_id = get_line_user_id()
+    doc = db_users.find_one({"line_user_id": line_user_id})
+    user = UserModel.model_validate(doc)
+    if user.role == UserRole.ADMIN:
+        return "你已經是幹部"
+    doc = db_admin_requests.find_one({"line_user_id": line_user_id})
+    if doc:
+        return "你的申請正在等待核准"
+    db_admin_requests.insert_one({"line_user_id": line_user_id})
+    return "申請成功"
+mcp.tool(request_admin, tags={UserRole.MEMBER})
+
+def get_pending_admin_requests():
+    """取得所有幹部申請請求"""
+    users: list[UserModel] = []
+    with db_users.find(
+        {"line_user_id": {"$in": [doc['line_user_id'] for doc in db_admin_requests.find({}, {"_id": 0})]}},
+        {"_id": 0}
+    ) as cursor:
+        for user in cursor:
+            user_model = UserModel.model_validate(user)
+            users.append(user_model)
+    logger.info(f"current admin requests: {users}")
+    if not users:
+        return "目前沒有任何幹部申請請求"
+    return [{
+        "line_user_id": user.line_user_id,
+        "name": user.name,
+        "student_id": user.student_id
+    } for user in users]
+mcp.tool(get_pending_admin_requests, tags={UserRole.ADMIN})
+
+def approve_admin_request(line_user_id: Annotated[str, "要核准對象的 LINE user id"]):
+    """核准幹部申請請求"""
+    doc = db_admin_requests.find_one({"line_user_id": line_user_id}, {"_id": 0})
+    if doc is None:
+        return "該成員並未提出幹部申請請求"
+    db_admin_requests.delete_one({"line_user_id": line_user_id})
+    doc = db_users.find_one({"line_user_id": line_user_id}, {"_id": 0})
+    if doc is None:
+        return "該成員不存在"
+    user = UserModel.model_validate(doc)
+    if user.role == UserRole.ADMIN:
+        return "該成員已經是幹部"
+    db_users.update_one({"line_user_id": line_user_id}, {
+        "$set": {"role": UserRole.ADMIN}
+    })
+    return "核准成功"
+mcp.tool(approve_admin_request, tags={UserRole.ADMIN})
