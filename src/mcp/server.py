@@ -130,21 +130,21 @@ mcp.tool(get_user_info, tags={UserRole.GENERAL, UserRole.MEMBER, UserRole.ADMIN}
 
 def register_one_on_one_tutoring(
     role: Annotated[OneOnOneRole, "使用者想在一對一教學中擔任老師或學生?"],
-    availble_time: Annotated[
+    available_time: Annotated[
         set[tuple[Weekday, ClassPeriod]],
         """使用者可以上課的所有時間，以台科大課程節次表示"""
     ]
 ) -> str:
     """報名一對一教學，在送出報名請求前，請先向使用者確認所有欄位皆正確再送出請求。"""
     logger.info(f"role: {role}")
-    logger.info(f"availble_time: {availble_time}")
+    logger.info(f"available_time: {available_time}")
     line_user_id = get_line_user_id()
     db_one_on_one_enroll.replace_one(
         {"line_user_id": line_user_id},
         OneOnOneFormModel(
             line_user_id=line_user_id,
             role=role,
-            availble_time=availble_time
+            available_time=available_time
         ).model_dump(mode="json"),
         upsert=True
     )
@@ -191,14 +191,14 @@ def update_one_on_one_tutoring_schedule():
     result = one_on_one.schedule(
         students=[
             one_on_one.Student(
-                available_time=form.availble_time,
+                available_time=form.available_time,
                 obj=form
             )
             for form in forms if form.role == "student"
         ],
         teachers=[
             one_on_one.Teacher(
-                available_time=form.availble_time,
+                available_time=form.available_time,
                 max_students=1,
                 obj=form
             )

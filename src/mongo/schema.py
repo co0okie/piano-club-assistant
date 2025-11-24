@@ -16,7 +16,7 @@ class OneOnOneRole(str, Enum):
 class OneOnOneFormModel(BaseModel):
     line_user_id: str = line_user_id_field
     role: OneOnOneRole
-    availble_time: set[tuple[Weekday, ClassPeriod]] = set()
+    available_time: set[tuple[Weekday, ClassPeriod]] = set()
 
 Schedule = dict[Weekday, dict[ClassPeriod, dict[OneOnOneRole, str] | None]]
 class ScheduleModel(RootModel[Schedule]):
